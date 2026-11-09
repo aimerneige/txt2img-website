@@ -20,7 +20,7 @@ export function createModal(opts: { className?: string; closeLabel: () => string
   let lastFocus: HTMLElement | null = null
 
   const focusables = () =>
-    Array.from(panel.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+    Array.from(panel.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'))
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {

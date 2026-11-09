@@ -30,6 +30,9 @@ export const icons = {
   type: svg('<path d="M4 7V4h16v3M9 20h6M12 4v16"/>'),
   sliders: svg('<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'),
   palette: svg('<circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2c0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3a1.8 1.8 0 0 1 1.8-1.8H17a5 5 0 0 0 5-5C22 6 17.5 2 12 2Z"/>'),
+  upload: svg('<path d="M12 15V3M7 8l5-5 5 5M5 21h14"/>'),
+  monitor: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+  search: svg('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
   wand: svg('<path d="m15 4 5 5L9 20H4v-5Z"/><path d="m13 6 5 5"/>'),
 }
 

@@ -1,5 +1,19 @@
 import './styles/main.css'
-import { ensureFontsFor, FONTS, getFont, loadFontFaces, type FontDef } from './core/fonts'
+import {
+  addSystemFont,
+  addUploadedFont,
+  canListSystemFonts,
+  cleanFamily,
+  FONT_ACCEPT,
+  FONT_FILE_RE,
+  FontFileError,
+  initCustomFonts,
+  isFontAvailable,
+  listSystemFonts,
+  removeCustomFont,
+  type AddResult,
+} from './core/custom-fonts'
+import { allFonts, customFonts, ensureFontsFor, FONTS, fontStack, getFont, hasFont, loadFontFaces, type FontDef } from './core/fonts'
 import { clearMeasureCache, computeLayout, type Layout } from './core/layout'
 import { exportPng, exportSize, renderPreview } from './core/render'
 import {
@@ -213,15 +227,19 @@ function buildHeader() {
 // ---------------------------------------------------------------------------
 // settings panel
 
+const fontLabel = (font: FontDef) => font.label ?? tk(`fonts.${font.id}`)
+
 function fontOptionRender(font: FontDef) {
   return (node: HTMLElement, where: 'option' | 'trigger') => {
     const name = el('span', 'font-name')
-    name.textContent = tk(`fonts.${font.id}`)
-    name.style.fontFamily = `"${font.family}", ${font.fallback.map((f) => `"${f}"`).join(', ')}, sans-serif`
+    name.textContent = fontLabel(font)
+    name.style.fontFamily = fontStack(font)
     node.appendChild(name)
     if (where === 'option') {
       const meta = el('span', 'font-meta')
-      meta.textContent = `${tk(`fontCategory.${font.category}`)} · ${tk(`fontScript.${font.script}`)}`
+      meta.textContent = font.kind && font.kind !== 'builtin'
+        ? t(font.kind === 'system' ? 'customFont.kindSystem' : 'customFont.kindUpload')
+        : `${tk(`fontCategory.${font.category}`)} · ${tk(`fontScript.${font.script}`)}`
       node.appendChild(meta)
     }
   }
@@ -285,6 +303,216 @@ function textField(key: 'footer', label: MessageKey, placeholder: MessageKey) {
 
 let fontSelect: ReturnType<typeof createSelect<string>> | null = null
 
+// ---- custom fonts (system / uploaded) -------------------------------------
+
+const fontInput = el('input') as HTMLInputElement
+fontInput.type = 'file'
+fontInput.accept = FONT_ACCEPT
+fontInput.hidden = true
+document.body.appendChild(fontInput)
+fontInput.addEventListener('change', () => {
+  const f = fontInput.files?.[0]
+  if (f) uploadFont(f)
+  fontInput.value = ''
+})
+
+/** Select a newly added font and rebuild the picker so it lists it. */
+function useFont(res: AddResult) {
+  const name = fontLabel(res.font)
+  if (res.existed) toast(t('customFont.exists', { name }))
+  else if (!res.persisted) toast(t('customFont.notSaved', { name }))
+  else toast(t('customFont.added', { name }), { kind: 'success' })
+  clearMeasureCache()
+  update({ fontId: res.font.id }, 0)
+  buildSettings()
+}
+
+let uploading = false
+async function uploadFont(file: File) {
+  if (uploading) return
+  uploading = true
+  const busy = window.setTimeout(() => toast(t('customFont.loading')), 400)
+  try {
+    useFont(await addUploadedFont(file, getLocale().code))
+  } catch (err) {
+    const code = err instanceof FontFileError ? err.message : 'invalid'
+    toast(t(code === 'size' ? 'customFont.tooLarge' : code === 'type' ? 'customFont.badType' : 'customFont.invalid'), { kind: 'error' })
+  } finally {
+    clearTimeout(busy)
+    uploading = false
+  }
+}
+
+async function removeFont(font: FontDef) {
+  await removeCustomFont(font.id)
+  if (settings.fontId === font.id) update({ fontId: localeDefaults().fontId ?? DEFAULT_SETTINGS.fontId }, 0)
+  buildSettings()
+  toast(t('customFont.removed', { name: fontLabel(font) }))
+}
+
+function buildFontTools() {
+  const wrap = el('div', 'font-tools')
+  const actions = el('div', 'font-actions')
+  const sysBtn = el('button', 'chip', `<span class="icon-slot">${icons.monitor}</span><span></span>`) as HTMLButtonElement
+  sysBtn.type = 'button'
+  sysBtn.addEventListener('click', () => systemFontDialog.open())
+  const upBtn = el('button', 'chip', `<span class="icon-slot">${icons.upload}</span><span></span>`) as HTMLButtonElement
+  upBtn.type = 'button'
+  upBtn.addEventListener('click', () => fontInput.click())
+  actions.append(sysBtn, upBtn)
+  const hint = el('p', 'font-hint')
+  wrap.append(actions, hint)
+
+  const list = el('ul', 'custom-fonts')
+  const rows = customFonts.map((f) => {
+    const li = el('li', 'custom-font')
+    const name = el('span', 'custom-font-name')
+    name.textContent = f.label ?? f.family
+    name.style.fontFamily = fontStack(f)
+    const kind = el('span', 'font-meta')
+    const rm = el('button', 'icon-btn custom-font-remove', icons.x) as HTMLButtonElement
+    rm.type = 'button'
+    rm.addEventListener('click', () => removeFont(f))
+    li.append(name, kind, rm)
+    list.appendChild(li)
+    return { f, kind, rm }
+  })
+  if (rows.length) wrap.appendChild(list)
+
+  settingsRefreshers.push(() => {
+    sysBtn.lastElementChild!.textContent = t('customFont.addSystem')
+    upBtn.lastElementChild!.textContent = t('customFont.upload')
+    hint.textContent = t('customFont.uploadHint')
+    list.setAttribute('aria-label', t('customFont.mine'))
+    for (const r of rows) {
+      r.kind.textContent = t(r.f.kind === 'system' ? 'customFont.kindSystem' : 'customFont.kindUpload')
+      const label = t('customFont.remove', { name: r.f.label ?? r.f.family })
+      r.rm.setAttribute('aria-label', label)
+      r.rm.dataset.tip = label
+    }
+  })
+  return wrap
+}
+
+const systemFontDialog = (() => {
+  const modal = createModal({ className: 'sysfont-modal', closeLabel: () => t('licenses.close') })
+  const intro = el('p', 'licenses-intro')
+  const label = el('label', 'field-wrap')
+  const cap = el('span', 'field-label')
+  const input = el('input', 'field') as HTMLInputElement
+  input.type = 'text'
+  input.autocomplete = 'off'
+  input.spellcheck = false
+  input.maxLength = 100
+  label.append(cap, input)
+
+  const preview = el('div', 'sysfont-preview')
+  const status = el('p', 'sysfont-status')
+
+  const scanRow = el('div', 'sysfont-scan')
+  const scanBtn = el('button', 'chip', `<span class="icon-slot">${icons.search}</span><span></span>`) as HTMLButtonElement
+  scanBtn.type = 'button'
+  const scanInfo = el('span', 'sysfont-count')
+  scanRow.append(scanBtn, scanInfo)
+  scanRow.hidden = !canListSystemFonts()
+  const results = el('div', 'sysfont-results')
+  results.setAttribute('role', 'listbox')
+  results.hidden = true
+
+  const foot = el('div', 'sysfont-foot')
+  const addBtn = el('button', 'btn btn-primary', `<span></span>`) as HTMLButtonElement
+  addBtn.type = 'button'
+  foot.append(addBtn)
+  modal.body.append(intro, label, scanRow, results, preview, status, foot)
+
+  let installed: string[] | null = null
+  let scanning = false
+
+  const sync = () => {
+    const family = cleanFamily(input.value)
+    preview.style.fontFamily = family ? `"${family}", ${fontStack(getFont(FONTS[0].id))}` : ''
+    const ok = family ? isFontAvailable(family) : false
+    status.textContent = family ? t(ok ? 'customFont.found' : 'customFont.notFound') : ''
+    status.classList.toggle('ok', ok)
+    addBtn.disabled = !ok
+    renderResults(family)
+  }
+
+  const renderResults = (query: string) => {
+    if (!installed) return
+    const q = query.toLowerCase()
+    const hits = installed.filter((f) => f.toLowerCase().includes(q)).slice(0, 200)
+    results.replaceChildren()
+    results.hidden = false
+    if (!hits.length) {
+      results.appendChild(el('div', 'sysfont-empty')).textContent = t('customFont.noMatch')
+      return
+    }
+    for (const family of hits) {
+      const b = el('button', 'sysfont-item') as HTMLButtonElement
+      b.type = 'button'
+      b.setAttribute('role', 'option')
+      b.textContent = family
+      b.style.fontFamily = `"${cleanFamily(family)}", sans-serif`
+      b.setAttribute('aria-selected', String(family === input.value))
+      b.addEventListener('click', () => {
+        input.value = family
+        sync()
+        input.focus()
+      })
+      results.appendChild(b)
+    }
+  }
+
+  const submit = () => {
+    const family = cleanFamily(input.value)
+    if (!family || !isFontAvailable(family)) return sync()
+    modal.close()
+    useFont(addSystemFont(family))
+  }
+
+  input.addEventListener('input', sync)
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      submit()
+    }
+  })
+  addBtn.addEventListener('click', submit)
+  scanBtn.addEventListener('click', async () => {
+    if (scanning) return
+    scanning = true
+    scanBtn.lastElementChild!.textContent = t('customFont.scanning')
+    try {
+      installed = await listSystemFonts()
+      scanInfo.textContent = t('customFont.scanCount', { n: installed.length })
+      sync()
+    } catch {
+      toast(t('customFont.scanFailed'), { kind: 'error' })
+    } finally {
+      scanning = false
+      scanBtn.lastElementChild!.textContent = t('customFont.scan')
+    }
+  })
+
+  return {
+    open() {
+      modal.setTitle(t('customFont.systemTitle'))
+      intro.textContent = t('customFont.systemIntro')
+      cap.textContent = t('customFont.familyLabel')
+      input.placeholder = t('customFont.familyPlaceholder')
+      preview.textContent = t('customFont.previewText')
+      scanBtn.lastElementChild!.textContent = t('customFont.scan')
+      if (installed) scanInfo.textContent = t('customFont.scanCount', { n: installed.length })
+      addBtn.firstElementChild!.textContent = t('customFont.add')
+      input.value = ''
+      sync()
+      modal.open()
+      setTimeout(() => input.focus(), 60)
+    },
+  }
+})()
+
 function buildSettings() {
   const slot = $('#settings-slot')
   slot.replaceChildren()
@@ -297,11 +525,11 @@ function buildSettings() {
     className: 'select-font',
     label: () => t('settings.font'),
     value: settings.fontId,
-    options: FONTS.map((f) => ({ value: f.id, render: fontOptionRender(f) })),
+    options: allFonts().map((f) => ({ value: f.id, render: fontOptionRender(f) })),
     onChange: (id) => update({ fontId: id }, 0),
   })
   settingsRefreshers.push(fontSelect.refresh)
-  fontSec.body.appendChild(fontSelect.el)
+  fontSec.body.append(fontSelect.el, buildFontTools())
 
   // layout
   const layoutSec = section('settings.sectionLayout', 'sliders')
@@ -438,6 +666,7 @@ function insertText(str: string) {
 }
 
 async function importFile(file: File) {
+  if (FONT_FILE_RE.test(file.name) || file.type.startsWith('font/')) return uploadFont(file)
   const okType = file.type.startsWith('text/') || /\.(txt|md|markdown|text)$/i.test(file.name) || (!file.type && file.size < 5e6)
   if (!okType) return toast(t('toast.importFailed'), { kind: 'error' })
   try {
@@ -751,4 +980,11 @@ onLocaleChange(() => {
   scheduleRender(0)
 })
 localeRefreshers.forEach((fn) => fn())
-render()
+initCustomFonts()
+  .catch(() => undefined)
+  .finally(() => {
+    // The saved font may have been removed (e.g. site data cleared).
+    if (!hasFont(settings.fontId)) update({ fontId: localeDefaults().fontId ?? DEFAULT_SETTINGS.fontId }, 0)
+    if (customFonts.length) buildSettings()
+    render()
+  })

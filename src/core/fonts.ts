@@ -7,9 +7,15 @@ export const loadFontFaces = () => (faces ??= import('./font-faces'))
 
 export type FontCategory = 'sans' | 'serif' | 'kai' | 'hand' | 'display'
 
+export type FontKind = 'builtin' | 'system' | 'upload'
+
 export interface FontDef {
   id: string
   family: string
+  /** Where the font comes from; builtin when omitted. */
+  kind?: FontKind
+  /** Display name for user-added fonts (builtin fonts are named through i18n). */
+  label?: string
   category: FontCategory
   regular: number
   bold: number
@@ -37,8 +43,15 @@ export const FONTS: FontDef[] = [
 
 export const DEFAULT_FONT_ID = 'noto-sans-sc'
 
+/** User-added fonts (system or uploaded), managed by custom-fonts.ts. */
+export const customFonts: FontDef[] = []
+
+export const allFonts = (): FontDef[] => [...FONTS, ...customFonts]
+
+export const hasFont = (id: string) => allFonts().some((f) => f.id === id)
+
 export function getFont(id: string): FontDef {
-  return FONTS.find((f) => f.id === id) ?? FONTS[0]
+  return FONTS.find((f) => f.id === id) ?? customFonts.find((f) => f.id === id) ?? FONTS[0]
 }
 
 export function fontStack(font: FontDef): string {

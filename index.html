@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f5f6f8" />
+    <meta name="description" content="Turn long text into a phone-friendly long image, right in your browser." />
+    <title>Text to Image</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <script>
+      // Apply the theme before first paint to avoid a flash.
+      try {
+        var t = localStorage.getItem('txt2img:theme')
+        if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        document.documentElement.dataset.theme = t
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#text" data-i18n="editor.heading">Text</a>
+    <header class="topbar" id="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="./">
+          <span class="brand-mark" id="brand-mark"></span>
+          <span class="brand-text">
+            <strong data-i18n="app.title">Text to Image</strong>
+            <span data-i18n="app.tagline"></span>
+          </span>
+        </a>
+        <div class="top-actions">
+          <div id="lang-slot"></div>
+          <button type="button" class="icon-btn theme-btn" id="theme-btn">
+            <span class="theme-icon sun" id="icon-sun"></span>
+            <span class="theme-icon moon" id="icon-moon"></span>
+          </button>
+          <a class="icon-btn" id="github-link" href="https://github.com/aimerneige/txt2img-website" target="_blank" rel="noopener noreferrer"
+            data-i18n-attr="aria-label:header.github;data-tip:header.github"></a>
+        </div>
+      </div>
+    </header>
+    <div class="app">
+
+      <main class="workspace">
+        <section class="col-edit">
+          <div class="card editor-card">
+            <div class="card-head">
+              <h2 class="card-title"><span class="card-icon" data-icon="type"></span><span data-i18n="editor.heading"></span></h2>
+              <div class="toolbar">
+                <button type="button" class="chip" id="btn-sample"><span data-icon="sparkles"></span><span data-i18n="editor.sample"></span></button>
+                <button type="button" class="chip" id="btn-paste"><span data-icon="clipboard"></span><span data-i18n="editor.paste"></span></button>
+                <button type="button" class="chip" id="btn-import"><span data-icon="file"></span><span data-i18n="editor.import"></span></button>
+                <button type="button" class="chip chip-danger" id="btn-clear"><span data-icon="trash"></span><span data-i18n="editor.clear"></span></button>
+              </div>
+            </div>
+            <input type="text" class="field title-input" id="title-input" autocomplete="off" maxlength="120"
+              data-i18n-attr="placeholder:editor.titlePlaceholder;aria-label:editor.titlePlaceholder" />
+            <div class="textarea-wrap" id="drop-zone">
+              <textarea class="field text-input" id="text" spellcheck="false" data-i18n-attr="placeholder:editor.placeholder;aria-label:editor.heading"></textarea>
+              <div class="drop-overlay"><span data-icon="file"></span><span data-i18n="editor.dropHint"></span></div>
+            </div>
+            <div class="editor-foot">
+              <span class="char-count" id="char-count"></span>
+            </div>
+          </div>
+
+          <div class="card settings-card">
+            <div class="card-head">
+              <h2 class="card-title"><span class="card-icon" data-icon="sliders"></span><span data-i18n="settings.heading"></span></h2>
+              <button type="button" class="chip" id="btn-reset"><span data-icon="reset"></span><span data-i18n="settings.reset"></span></button>
+            </div>
+            <div id="settings-slot"></div>
+          </div>
+        </section>
+
+        <aside class="col-preview" id="preview-panel" aria-labelledby="preview-title">
+          <div class="preview-sheet-backdrop" id="sheet-backdrop"></div>
+          <div class="preview-inner">
+            <div class="preview-head">
+              <h2 class="card-title" id="preview-title"><span class="card-icon" data-icon="eye"></span><span data-i18n="preview.heading"></span></h2>
+              <span class="preview-size" id="preview-size"></span>
+              <button type="button" class="icon-btn sheet-close" id="sheet-close" data-i18n-attr="aria-label:preview.close"><span data-icon="x"></span></button>
+            </div>
+            <div class="preview-stage" id="preview-stage">
+              <div class="phone">
+                <div class="preview-host" id="preview-host"></div>
+                <div class="preview-empty" id="preview-empty"><span data-icon="type"></span><p data-i18n="preview.empty"></p></div>
+                <div class="preview-loading" id="preview-loading"><span class="spinner"></span><span data-i18n="preview.loadingFonts"></span></div>
+              </div>
+            </div>
+            <div class="preview-actions">
+              <div class="export-width">
+                <span class="field-label" data-i18n="preview.width"></span>
+                <div id="width-slot"></div>
+              </div>
+              <div class="action-row">
+                <button type="button" class="btn btn-primary btn-download" id="btn-download">
+                  <span class="btn-progress"></span>
+                  <span data-icon="download"></span><span class="btn-label" data-i18n="preview.download"></span>
+                </button>
+                <button type="button" class="icon-btn icon-btn-lg" id="btn-copy" data-i18n-attr="aria-label:preview.copy;data-tip:preview.copy"><span data-icon="copy"></span></button>
+                <button type="button" class="icon-btn icon-btn-lg" id="btn-share" hidden data-i18n-attr="aria-label:preview.share;data-tip:preview.share"><span data-icon="share"></span></button>
+              </div>
+              <p class="shortcut-hint" data-i18n="preview.shortcut"></p>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="site-footer">
+        <span data-i18n="footer.privacy"></span>
+        <button type="button" class="link-btn" id="btn-licenses" data-i18n="footer.licenses"></button>
+      </footer>
+    </div>
+
+    <div class="mobile-bar">
+      <button type="button" class="btn btn-ghost" id="btn-open-preview"><span data-icon="eye"></span><span data-i18n="preview.open"></span></button>
+      <button type="button" class="btn btn-primary" id="btn-download-m"><span class="btn-progress"></span><span data-icon="download"></span><span class="btn-label" data-i18n="preview.download"></span></button>
+    </div>
+
+    <input type="file" id="file-input" accept=".txt,.md,.markdown,text/plain,text/markdown" hidden />
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
